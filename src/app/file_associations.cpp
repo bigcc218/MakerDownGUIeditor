@@ -1,5 +1,25 @@
 #include "file_associations.h"
 
+#include <windows.h>
+
+// ---------------------------------------------------------------------------
+// 兼容性补充：部分 MinGW 工具链的 shlobj_core.h 未能正确暴露以下 Shell 符号，
+// 这里手动补充定义与声明，避免编译报错。
+// ---------------------------------------------------------------------------
+#ifndef SHCNE_ASSOCCHANGED
+#define SHCNE_ASSOCCHANGED 0x08000000L
+#endif
+
+#ifndef SHCNF_IDLIST
+#define SHCNF_IDLIST 0x0000
+#endif
+
+extern "C" {
+void SHChangeNotify(LONG wEventId, UINT uFlags, LPCVOID dwItem1,
+                    LPCVOID dwItem2);
+}
+// ---------------------------------------------------------------------------
+
 #include <shlobj_core.h>
 
 #include "resource.h"
