@@ -1,0 +1,85 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Windows / MinGW-w64
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install MinGW-w64 (g++, windres)
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-binutils
+          path-type: inherit
+
+      - name: Build and run core tests
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force build | Out-Null
+          g++ --version
+          # Mirror build.bat without the trailing `pause`.
+          0..0 | ForEach-Object {
+            windres --codepage=65001 -Iresources resources\app.rc -O coff -o build\app.res.o
+            if ($LASTEXITCODE -ne 0) { throw 'windres failed' }
+
+            $sources = @(
+              'src\app\main.cpp','src\app\app.cpp','src\app\app_draw.cpp','src\app\app_edit.cpp',
+              'src\app\app_input.cpp','src\app\app_source.cpp','src\app\app_files.cpp',
+              'src\app\file_associations.cpp','src\app\dialogs.cpp','src\app\ui_util.cpp',
+              'src\app\image_loader.cpp','src\core\model.cpp','src\core\utf8.cpp',
+              'src\core\file_utils.cpp','src\core\path_utils.cpp','src\core\markdown.cpp',
+              'src\core\project_io.cpp'
+            )
+            $common = @(
+              '-std=c++20','-O2','-DUNICODE','-D_UNICODE','-DWIN32_LEAN_AND_MEAN','-DNOMINMAX',
+              '-DWINVER=0x0A00','-D_WIN32_WINNT=0x0A00','-finput-charset=UTF-8',
+              '-fexec-charset=UTF-8','-fwide-exec-charset=UTF-16LE','-Isrc','-Iresources'
+            )
+            g++ @common -municode -mwindows @sources build\app.res.o -o build\MDGEStudio.exe `
+              -static -static-libgcc -static-libstdc++ -s `
+              -ld2d1 -ldwrite -lwindowscodecs -lole32 -luuid -lshell32 -lshlwapi -limm32 `
+              -lcomdlg32 -lgdi32 -luser32 -loleaut32 -ldwmapi -lcomctl32 -ladvapi32
+            if ($LASTEXITCODE -ne 0) { throw 'app build failed' }
+
+            $core = @(
+              'src\core\model.cpp','src\core\utf8.cpp','src\core\file_utils.cpp',
+              'src\core\path_utils.cpp','src\core\markdown.cpp','src\core\project_io.cpp'
+            )
+            g++ @common tests\core_tests.cpp @core -o build\core_tests.exe `
+              -static -static-libgcc -static-libstdc++ -lshlwapi
+            if ($LASTEXITCODE -ne 0) { throw 'test build failed' }
+
+            .\build\core_tests.exe
+            if ($LASTEXITCODE -ne 0) { throw 'tests failed' }
+          }
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: MDGEStudio-windows-x64
+          path: |
+            build/MDGEStudio.exe
+            build/core_tests.exe
+          if-no-files-found: error
+
+      - name: Attach binaries to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/MDGEStudio.exe
+          generate_release_notes: true

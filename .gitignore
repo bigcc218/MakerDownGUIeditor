@@ -1,0 +1,23 @@
+# 构建产物（由 build.bat 生成）
+/build/*
+!/build/README.md
+!/build/gen_file_icons.py
+*.o
+*.obj
+*.pdb
+*.ilk
+*.exe
+*.dll
+
+# 编辑器 / IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.sln.docstates
+
+# 系统杂项
+Thumbs.db
+desktop.ini
+.DS_Store

@@ -1,0 +1,43 @@
+#pragma code_page(65001)
+
+#include <windows.h>
+#include "resource.h"
+
+IDI_APP_ICON ICON "app.ico"
+IDI_MDGE_FILE_ICON ICON "mdge-file.ico"
+IDI_MD_FILE_ICON ICON "md-file.ico"
+1 RT_MANIFEST "app.manifest"
+
+IDD_DOCUMENT_SETTINGS DIALOGEX 0, 0, 370, 250
+STYLE DS_MODALFRAME | DS_SETFONT | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "文档资料"
+FONT 9, "Microsoft YaHei UI", 400, 0, 0x86
+BEGIN
+    LTEXT           "项目标题", -1, 14, 15, 60, 10
+    EDITTEXT        IDC_SET_TITLE, 80, 12, 276, 14, ES_AUTOHSCROLL
+    LTEXT           "作者", -1, 14, 39, 60, 10
+    EDITTEXT        IDC_SET_AUTHOR, 80, 36, 170, 14, ES_AUTOHSCROLL
+    LTEXT           "项目图标", -1, 14, 63, 60, 10
+    EDITTEXT        IDC_SET_ICON, 80, 60, 276, 14, ES_AUTOHSCROLL
+    PUSHBUTTON      "浏览...", IDC_BROWSE_ICON, 80, 80, 60, 16
+    PUSHBUTTON      "设为相对路径", IDC_MAKE_RELATIVE, 146, 80, 88, 16
+    PUSHBUTTON      "刷新预览", IDC_REFRESH_ICON, 240, 80, 116, 16
+    CONTROL         "", IDC_ICON_PREVIEW, "Static", SS_ICON | SS_CENTERIMAGE | WS_BORDER, 14, 108, 58, 58
+    LTEXT           "", IDC_ICON_STATUS, 82, 104, 274, 64, SS_LEFT
+    LTEXT           "图标路径支持绝对路径，也支持相对于 .mdge 文件的相对路径。相对路径会依次在项目目录、当前目录和程序目录中查找。", -1, 14, 174, 342, 30, SS_LEFT
+    DEFPUSHBUTTON   "确定", IDOK, 194, 220, 74, 20
+    PUSHBUTTON      "取消", IDCANCEL, 282, 220, 74, 20
+END
+
+IDD_LINK DIALOGEX 0, 0, 334, 132
+STYLE DS_MODALFRAME | DS_SETFONT | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "编辑链接"
+FONT 9, "Microsoft YaHei UI", 400, 0, 0x86
+BEGIN
+    LTEXT           "", IDC_LINK_INFO, 14, 13, 306, 22, SS_LEFT
+    LTEXT           "链接地址", -1, 14, 45, 60, 10
+    EDITTEXT        IDC_LINK_URL, 80, 42, 240, 14, ES_AUTOHSCROLL
+    LTEXT           "留空并确定可移除当前链接。支持 https://、mailto: 或相对地址。", -1, 80, 62, 240, 20, SS_LEFT
+    DEFPUSHBUTTON   "确定", IDOK, 170, 98, 74, 20
+    PUSHBUTTON      "取消", IDCANCEL, 250, 98, 70, 20
+END
