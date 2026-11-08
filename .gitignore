@@ -16,6 +16,10 @@
 *.suo
 *.sln.docstates
 
+# Python
+__pycache__/
+*.pyc
+
 # 系统杂项
 Thumbs.db
 desktop.ini
