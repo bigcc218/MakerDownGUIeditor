@@ -1,5 +1,7 @@
 #include "file_associations.h"
 
+#include <shlobj_core.h>
+
 #include "resource.h"
 
 #include <shlwapi.h>
