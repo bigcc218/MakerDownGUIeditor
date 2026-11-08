@@ -1084,7 +1084,10 @@ std::wstring BlockToMarkdown(const Block& block, int number) {
             std::wstring result = L"![" + alt + L"](" + destination + L")";
             if (!block.caption.empty()) {
                 // Keep the visual caption as an italic line below the image.
-                std::wstring caption = SerializeInline(block);
+                // SerializeInline 保留粗体/链接等行内标记，如果直接再套一层 `*`
+                // 会形成嵌套强调，导出后重新解析就会多出一个段落块。这里只输出
+                // 转义后的纯文本，保证说明文字能一对一地往返。
+                const std::wstring caption = EscapeText(block.text);
                 if (!caption.empty()) {
                     result += L"\n\n*" + caption + L"*";
                 }
@@ -1143,6 +1146,20 @@ std::vector<Block> MarkdownToBlocks(const std::wstring& markdown) {
 
         const FenceInfo fence = DetectFence(lines[i]);
         if (fence.valid) {
+            // 只有确实存在闭合围栏时才当作代码块。未闭合的围栏如果一路吞到文件
+            // 末尾，会把后面所有内容静默变成代码；这种情况退回普通段落处理，
+            // 让文本至少在画布上可见、可编辑。
+            std::size_t scan = i + 1;
+            while (scan < lines.size() && !IsFenceClose(lines[scan], fence)) {
+                ++scan;
+            }
+            if (scan >= lines.size()) {
+                const std::wstring literal = lines[i];
+                blocks.push_back(MakeParsedInlineBlock(BlockType::Paragraph, literal));
+                ++i;
+                continue;
+            }
+
             Block code = MakeBlock(BlockType::Code);
             std::wstring language = TrimText(fence.info);
             if (language.size() > 80) {
@@ -1152,11 +1169,7 @@ std::vector<Block> MarkdownToBlocks(const std::wstring& markdown) {
             ++i;
             std::wstring content;
             bool firstLine = true;
-            while (i < lines.size()) {
-                if (IsFenceClose(lines[i], fence)) {
-                    ++i;
-                    break;
-                }
+            while (i < scan) {
                 if (!firstLine) {
                     content += L'\n';
                 }
@@ -1164,6 +1177,7 @@ std::vector<Block> MarkdownToBlocks(const std::wstring& markdown) {
                 firstLine = false;
                 ++i;
             }
+            i = scan + 1;  // 跳过闭合围栏。
             code.text = std::move(content);
             code.styles.assign(code.text.size(), 0);
             blocks.push_back(std::move(code));

@@ -81,9 +81,15 @@ ComPtr<IDWriteTextLayout> CreateBlockTextLayout(
     layout->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR);
 
     const FLOAT baseSize = format->GetFontSize();
+    // styles 与 text 的长度不保证始终一致：Markdown 解析出的代码块会带着空
+    // styles 进入文档，模型层的纯文本操作也不维护它。这里按缺失即无样式处理，
+    // 避免用 text 的下标直接索引 styles 造成越界读取。
+    auto styleAt = [&block](std::size_t at) -> std::uint8_t {
+        return at < block.styles.size() ? block.styles[at] : 0;
+    };
     std::size_t index = 0;
     while (index < block.text.size()) {
-        const std::uint8_t flags = block.styles[index];
+        const std::uint8_t flags = styleAt(index);
         const std::uint8_t visibleFlags =
             static_cast<std::uint8_t>(flags & (mdge::StyleBold | mdge::StyleItalic |
                                                mdge::StyleCode | mdge::StyleLink));
@@ -98,7 +104,7 @@ ComPtr<IDWriteTextLayout> CreateBlockTextLayout(
         std::size_t end = index + 1;
         while (end < block.text.size()) {
             std::uint8_t nextFlags = static_cast<std::uint8_t>(
-                block.styles[end] &
+                styleAt(end) &
                 (mdge::StyleBold | mdge::StyleItalic | mdge::StyleCode |
                  mdge::StyleLink));
             if ((nextFlags & mdge::StyleLink) != 0 &&

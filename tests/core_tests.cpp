@@ -423,6 +423,99 @@ void Cleanup(const std::wstring& directory) {
     std::filesystem::remove_all(directory, ec);
 }
 
+// 回归：Markdown 解析出的代码块带着空 styles 进入文档，而 InsertText 对
+// 非文本块会提前返回。渲染端一旦用 text 的下标直接索引 styles 就是越界读取，
+// 这里把"代码块里继续输入后 styles 仍然等长"固定下来。
+void TestCodeBlockStyleInvariant() {
+    const std::wstring source = L"```cpp\nint a = 1;\n```\n";
+    const std::vector<mdge::Block> blocks = mdge::MarkdownToBlocks(source);
+    Check(!blocks.empty(), "fenced code parsed");
+    if (blocks.empty()) {
+        return;
+    }
+    Check(blocks[0].type == mdge::BlockType::Code, "fenced block is code");
+    Check(blocks[0].text == L"int a = 1;", "code text preserved");
+    Check(blocks[0].styles.size() == blocks[0].text.size(),
+          "code block styles sized to text");
+
+    // 编辑后再规范化，styles 必须继续与 text 等长。
+    mdge::Document document;
+    document.blocks = blocks;
+    mdge::InsertText(document.blocks[0], document.blocks[0].text.size(), L"\nint b;",
+                     0);
+    mdge::NormalizeDocument(document);
+    Check(document.blocks[0].styles.size() == document.blocks[0].text.size(),
+          "code styles stay in sync after edit");
+
+    // 往返一遍项目文件，文本不能丢。
+    std::wstring error;
+    const std::wstring path = mdge::CurrentDirectoryPath() +
+                              L"\\build\\mdge-tests-codeb" +
+                              std::to_wstring(GetCurrentProcessId()) + L".mdge";
+    Check(mdge::SaveProjectFile(path, document, error), "code save");
+    mdge::Document reloaded;
+    Check(mdge::LoadProjectFile(path, reloaded, error), "code load");
+    Check(!reloaded.blocks.empty() &&
+              reloaded.blocks[0].text == document.blocks[0].text,
+          "code text roundtrips");
+    Check(!reloaded.blocks.empty() &&
+              reloaded.blocks[0].styles.size() ==
+                  reloaded.blocks[0].text.size(),
+          "code styles sized after load");
+    DeleteFileW(path.c_str());
+}
+
+// 回归：未闭合的围栏如果一路吞到文件末尾，会把后续所有内容静默变成代码。
+void TestUnterminatedFence() {
+    const std::wstring source = L"```cpp\nint a = 1;\n\n# 后面的标题\n\n正文。\n";
+    const std::vector<mdge::Block> blocks = mdge::MarkdownToBlocks(source);
+
+    bool sawHeading = false;
+    bool sawParagraph = false;
+    for (const mdge::Block& block : blocks) {
+        if (block.type == mdge::BlockType::Heading1) {
+            sawHeading = true;
+        }
+        if (block.type == mdge::BlockType::Paragraph) {
+            sawParagraph = true;
+        }
+    }
+    Check(sawHeading, "unterminated fence keeps following heading");
+    Check(sawParagraph, "unterminated fence keeps following paragraph");
+
+    // 完全闭合的围栏仍然必须解析成代码块。
+    const std::vector<mdge::Block> closed =
+        mdge::MarkdownToBlocks(L"```cpp\nint a = 1;\n```\n");
+    Check(!closed.empty() && closed[0].type == mdge::BlockType::Code,
+          "closed fence still parses as code");
+}
+
+// 回归：图片说明曾经用 SerializeInline 输出并再套一层 `*`，带粗体或链接的
+// 说明会形成嵌套强调，导出后重新解析会多出一个段落块。
+void TestImageCaptionRoundtrip() {
+    mdge::Block image = mdge::MakeBlock(mdge::BlockType::Image);
+    image.imagePath = L"a.png";
+    image.caption = L"说明文字";
+    image.text = L"带样式**说明**";
+    image.styles.assign(image.text.size(), 0);
+    mdge::ApplyInlineStyle(image, 2, 4, mdge::StyleBold, true);
+
+    mdge::Document document;
+    document.title = L"t";
+    document.blocks.push_back(image);
+    const std::wstring exported = mdge::DocumentToMarkdown(document);
+    Check(Contains(exported, L"![说明文字](a.png)"), "image alt exported");
+
+    const std::vector<mdge::Block> reparsed = mdge::MarkdownToBlocks(exported);
+    int imageBlocks = 0;
+    for (const mdge::Block& block : reparsed) {
+        if (block.type == mdge::BlockType::Image) {
+            ++imageBlocks;
+        }
+    }
+    Check(imageBlocks == 1, "image caption does not split into extra blocks");
+}
+
 }  // namespace
 
 int main() {
@@ -444,6 +537,9 @@ int main() {
     TestWordCounts();
     TestMarkdown();
     TestMarkdownParsing();
+    TestCodeBlockStyleInvariant();
+    TestUnterminatedFence();
+    TestImageCaptionRoundtrip();
     TestProjectRoundtrip(directory);
     TestPaths(directory);
 

@@ -1115,6 +1115,9 @@ void App::EditSelectedLink() {
     if (!block || !mdge::IsTextual(block->type)) {
         return;
     }
+    // 记录块下标与选区：ShowLinkDialog 是模态对话框，期间文档可能被重新
+    // 分配，拿着的 Block* 会失效，所以对话框返回后按下标重新取一次。
+    const std::size_t blockIndex = selection_.block;
     const std::size_t start = SelectionStart();
     const std::size_t end = SelectionEnd();
     const std::wstring selected = block->text.substr(start, end - start);
@@ -1124,8 +1127,16 @@ void App::EditSelectedLink() {
     if (!result.accepted) {
         return;
     }
+    if (blockIndex >= document_.blocks.size()) {
+        return;
+    }
+    block = &document_.blocks[blockIndex];
+    const std::size_t safeEnd = std::min(end, block->text.size());
+    if (!mdge::IsTextual(block->type) || start >= safeEnd) {
+        return;
+    }
     PushUndo(L"link", false);
-    mdge::ApplyLink(*block, start, end, result.href);
+    mdge::ApplyLink(*block, start, safeEnd, result.href);
     MarkDocumentDirty();
     InvalidateEditorState();
     NormalizeSelection();
@@ -1243,11 +1254,15 @@ void App::PasteFromClipboard() {
     mdge::BlockType continuationType = mdge::BlockType::Paragraph;
     if (block->type == mdge::BlockType::Bullet ||
         block->type == mdge::BlockType::Numbered ||
-        block->type == mdge::BlockType::Quote) {
+        block->type == mdge::BlockType::Quote ||
+        block->type == mdge::BlockType::Code) {
+        // 代码块也要沿用自身类型：否则多行粘贴会把后续几行变成普通段落，
+        // 代码内容被拆散、行内样式也随之中断。
         continuationType = block->type;
     } else if (mdge::IsTask(block->type)) {
         continuationType = mdge::BlockType::TaskUnchecked;
     }
+    const std::wstring continuationLanguage = block->language;
     const int currentIndex = selection_.block;
     mdge::Block tail = mdge::SplitBlock(*block, caret);
 
@@ -1269,6 +1284,34 @@ void App::PasteFromClipboard() {
     if (lines.empty()) {
         lines.push_back(L"");
     }
+    if (continuationType == mdge::BlockType::Code &&
+        lines.size() > 1) {
+        // 代码块里的粘贴保留原样：用换行把各行接进同一个块，而不是拆块。
+        std::wstring joined = lines[0];
+        for (std::size_t i = 1; i < lines.size(); ++i) {
+            joined += L'\n';
+            joined += lines[i];
+        }
+        mdge::InsertText(document_.blocks[static_cast<std::size_t>(currentIndex)],
+                         document_.blocks[static_cast<std::size_t>(currentIndex)].text.size(),
+                         joined, 0);
+        const std::size_t caretAfterCode =
+            document_.blocks[static_cast<std::size_t>(currentIndex)].text.size();
+        if (!tail.text.empty()) {
+            mdge::MergeBlock(document_.blocks[static_cast<std::size_t>(currentIndex)],
+                             tail);
+        }
+        selection_.block = currentIndex;
+        selection_.caret = caretAfterCode;
+        selection_.anchor = caretAfterCode;
+        MarkDocumentDirty();
+        InvalidateEditorState();
+        NormalizeSelection();
+        EnsurePageLayout();
+        EnsureCaretVisible();
+        InvalidateRect(window_, nullptr, FALSE);
+        return;
+    }
 
     mdge::Block& first = document_.blocks[static_cast<std::size_t>(currentIndex)];
     mdge::InsertText(first, first.text.size(), lines[0], inheritedStyle);
@@ -1276,6 +1319,7 @@ void App::PasteFromClipboard() {
     int lastIndex = currentIndex;
     for (std::size_t i = 1; i < lines.size(); ++i) {
         mdge::Block added = mdge::MakeBlock(continuationType);
+        added.language = continuationLanguage;
         if (!lines[i].empty()) {
             mdge::InsertText(added, 0, lines[i], 0);
         }
@@ -1288,6 +1332,8 @@ void App::PasteFromClipboard() {
         document_.blocks[static_cast<std::size_t>(lastIndex)].text.size();
     if (!tail.text.empty()) {
         mdge::Block& last = document_.blocks[static_cast<std::size_t>(lastIndex)];
+        // 光标应停在粘贴内容之后、被合并的尾巴之前。
+        caretAfterPaste = last.text.size();
         mdge::MergeBlock(last, tail);
     }
     selection_.block = lastIndex;
