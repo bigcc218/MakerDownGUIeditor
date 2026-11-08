@@ -115,16 +115,25 @@ bool RemoveUserChoice(const wchar_t* extension, std::wstring& error) {
         L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\";
     path += extension;
     path += L"\\UserChoice";
+
+    // Windows 10 1703 起给 UserChoice 加了哈希校验，直接删除通常返回拒绝访问。
+    // 这里只做"尽力而为"的清理：失败时把原因告诉调用方，由界面提示用户去
+    // 设置中重新选择，绝不把失败当成致命错误。
     const LSTATUS status = RegDeleteTreeW(HKEY_CURRENT_USER, path.c_str());
-    if (status == ERROR_SUCCESS || status == ERROR_FILE_NOT_FOUND ||
-        status == ERROR_PATH_NOT_FOUND) {
-        if (status == ERROR_SUCCESS) {
-            SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
-        }
+    if (status == ERROR_SUCCESS) {
+        SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
         return true;
     }
-    error = L"无法清除旧的默认应用选择（错误码 " +
-            std::to_wstring(status) + L"）。";
+    if (status == ERROR_FILE_NOT_FOUND || status == ERROR_PATH_NOT_FOUND) {
+        return true;  // 本来就没有用户选择，无需清理。
+    }
+#if defined(ERROR_ACCESS_DENIED)
+    if (status == ERROR_ACCESS_DENIED) {
+        error = L"系统保护了默认应用选择";
+        return false;
+    }
+#endif
+    error = L"错误码 " + std::to_wstring(status);
     return false;
 }
 

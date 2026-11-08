@@ -38,6 +38,8 @@ MDGE Studio 是一个面向 Windows 的可视化 Markdown 文档编辑器，使�
 
 到 [Releases](../../releases) 下载最新的 `MDGEStudio.exe`（单个文件、静态链接，无需安装运行时）；或者克隆仓库后运行 `build.bat` 自行编译。
 
+当前版本 **v1.1.2**，版本号同时写入可执行文件的版本资源，可在文件属性 → 详细信息中查看。
+
 ## 运行
 
 编译好的程序位于 `build\MDGEStudio.exe`。直接双击，或带上一个 `.mdge` 项目 / `.md` 文档启动：
