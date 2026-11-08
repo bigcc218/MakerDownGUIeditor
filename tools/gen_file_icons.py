@@ -1,7 +1,8 @@
-﻿from pathlib import Path
+from pathlib import Path
 from PIL import Image, ImageDraw
 
-OUT = Path(r"C:\Users\Administrator\Desktop\MakerDownGUIeditor\resources")
+# tools/ 的上一级就是仓库根目录，clone 到任何位置都能跑。
+OUT = Path(__file__).resolve().parent.parent / "resources"
 C = 1024
 
 def rr(draw, box, radius, fill, outline=None, width=0):

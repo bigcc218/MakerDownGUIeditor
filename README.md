@@ -7,8 +7,6 @@ MDGE Studio 是一个面向 Windows 的可视化 Markdown 文档编辑器，使�
 
 ![MDGE Studio 编辑器界面](docs/screenshot.png)
 
-> 徽章里的 `OWNER` 在推送后替换成你的 GitHub 用户名或组织名。不想放徽章可以直接删掉这两行。
-
 ## 任务清单
 
 - [x] 基本的图形化与编辑
@@ -16,6 +14,7 @@ MDGE Studio 是一个面向 Windows 的可视化 Markdown 文档编辑器，使�
   - [x] 保存 MDGE 项目文件
 - [x] 使应用中的“源码”部分可以编辑
 - [x] 添加 GitHub 风格的任务列表项
+- [x] 首次启动文件关联与独立的 `.md` / `.mdge` 图标
 
 ## 特性
 
@@ -27,6 +26,7 @@ MDGE Studio 是一个面向 Windows 的可视化 Markdown 文档编辑器，使�
 - 实时 Markdown 源码面板与文档大纲面板。
 - Markdown 源码可以直接点击编辑：源码改动实时解析为可视化内容，画布与源码双向同步。
 - 自有的二进制项目格式 `.mdge`，带版本、CRC32 校验、原子保存。
+- 首次启动自动关联未关联的 `.mdge`，随后询问是否关联 `.md`；两种文件图标独立，且都与应用图标不同。
 - 标准 Markdown 导出，图片路径保持原样并转为 `/` 分隔符。
 - 项目图标支持绝对路径与相对路径；加载结果会同时用于侧栏、标题栏和任务栏图标。
 - 文档文字以左到右的裁剪动画出现，总时长 **8 ms**，小于 10 ms；不会影响输入响应。
@@ -40,13 +40,14 @@ MDGE Studio 是一个面向 Windows 的可视化 Markdown 文档编辑器，使�
 
 ## 运行
 
-编译好的程序位于 `build\MDGEStudio.exe`。直接双击，或带上一个 `.mdge` 项目启动：
+编译好的程序位于 `build\MDGEStudio.exe`。直接双击，或带上一个 `.mdge` 项目 / `.md` 文档启动：
 
 ```bat
 build\MDGEStudio.exe samples\Welcome.mdge
+build\MDGEStudio.exe samples\Welcome.md
 ```
 
-项目附带了一个可直接编辑的示例：`samples\Welcome.mdge`。示例使用相对路径图标 `samples\assets\mdge-mark.png`，对应的导出结果在 `samples\Welcome.md`。
+项目附带了一个可直接编辑的示例：`samples\Welcome.mdge`。示例使用相对路径图标 `samples\assets\mdge-mark.png`，对应的导出结果在 `samples\Welcome.md`。直接打开 `.md` 时，内容会作为 Markdown 导入为当前文档；保存项目会创建 `.mdge` 文件，也可以继续用“导出 MD”写出 Markdown。
 
 ## 编译
 
@@ -67,7 +68,7 @@ build.bat
 - `build\MDGEStudio.exe`：应用本体，已静态链接 C++ 运行库。
 - `build\core_tests.exe`：模型、文件格式、Markdown 导出与路径解析测试。
 
-应用本体只依赖系统 DLL：Direct2D、DirectWrite、Windows Imaging Component、User32、GDI32、Shell32、Shlwapi 等。
+应用本体只依赖系统 DLL：Direct2D、DirectWrite、Windows Imaging Component、User32、GDI32、Shell32、Shlwapi、Advapi32（当前用户文件关联）等。
 
 ## 基本操作
 
@@ -118,6 +119,21 @@ build.bat
 - 按 `Enter` 在当前任务后追加一个未完成任务；空任务再按 `Enter` 会退出任务清单。
 - 源码面板会同步显示 `- [ ]` / `- [x]`；直接在源码中编辑任务标记也会更新画布。
 - 任务项支持普通文字、行内粗体、斜体、代码和链接，并参与撤销/重做和 `.mdge` 项目保存。
+
+## 文件关联
+
+应用第一次启动时会检查当前用户对 `.mdge` 的关联状态：
+
+1. 如果 `.mdge` 尚未关联，程序通过当前用户注册表自动将它关联到 MDGE Studio，不需要管理员权限。
+2. 完成 `.mdge` 处理后，程序会询问是否也为 `.md` 文件添加关联。选择“是”会写入 `.md` 关联；选择“否”不会再次询问。
+3. 如果 `.mdge` 或 `.md` 已由其他程序关联，程序不会静默覆盖 `.mdge` 的现有设置；`.md` 会在获得用户确认后才尝试切换默认打开方式。
+4. 关联设置只在首次启动时执行一次，并记录在当前用户配置中。
+
+`.md` 和 `.mdge` 使用两个不同的文件图标，且都不使用应用本身的图标：
+
+![应用图标、.mdge 文件图标与 .md 文件图标](docs/file-association-icons.png)
+
+关联图标直接嵌入程序资源中，因此只需要分发单个 `MDGEStudio.exe`，不需要额外的 `.ico` 文件。
 
 ## 图标加载：绝对路径与相对路径
 
@@ -195,7 +211,7 @@ assets\mdge-mark.png                     相对路径
 ```text
 src/app/        Win32 窗口、Direct2D 绘制、编辑交互、对话框
 src/core/       文档模型、UTF-8、路径、.mdge 读写、Markdown 导出与解析
-resources/      窗口图标、应用清单、原生对话框模板
+resources/      应用与关联文件图标、应用清单、原生对话框模板
 samples/        示例项目、导出结果与示例图标
 tests/          核心逻辑测试
 tools/          图标生成、示例生成与项目导出脚本
@@ -220,7 +236,7 @@ build\core_tests.exe
 ## 当前范围
 
 - 仅面向 Windows 桌面。
-- 可以直接打开 `.mdge` 项目和拖入图片；Markdown 源码可以在源码面板中粘贴和编辑，但打开文件对话框目前只识别 `.mdge` 项目。
+- 可以直接打开 `.mdge` 项目和拖入图片；通过文件关联双击 `.md` 会作为 Markdown 导入，打开按钮目前仍以 `.mdge` 项目为主。
 - 表格、嵌套列表、Setext 标题和 HTML 块暂不转换为对应可视化块。
 - 跨块文本选择不在当前版本范围内。
 - 行内样式在当前内容块内应用，文件格式本身可以保存任意数量的样式 span。

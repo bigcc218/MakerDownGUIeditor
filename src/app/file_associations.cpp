@@ -1,33 +1,14 @@
 #include "file_associations.h"
 
-#include <windows.h>
-
-// ---------------------------------------------------------------------------
-// 兼容性补充：部分 MinGW 工具链的 shlobj_core.h 未能正确暴露以下 Shell 符号，
-// 这里手动补充定义与声明，避免编译报错。
-// ---------------------------------------------------------------------------
-#ifndef SHCNE_ASSOCCHANGED
-#define SHCNE_ASSOCCHANGED 0x08000000L
-#endif
-
-#ifndef SHCNF_IDLIST
-#define SHCNF_IDLIST 0x0000
-#endif
-
-extern "C" {
-void SHChangeNotify(LONG wEventId, UINT uFlags, LPCVOID dwItem1,
-                    LPCVOID dwItem2);
-}
-// ---------------------------------------------------------------------------
-
-#include <shlobj_core.h>
-
 #include "resource.h"
 
+// 只用经典 SDK 头文件：MinGW-w64 不提供 MSVC 专有的 shlobj_core.h。
+// 这里需要的 SHChangeNotify、SHCNE_ASSOCCHANGED、SHCNF_IDLIST 在
+// shlobj.h / shellapi.h 中都有定义，两个工具链一致，无需手动声明。
+#include <shlobj.h>
 #include <shlwapi.h>
 #include <shellapi.h>
 
-#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -44,28 +25,6 @@ constexpr wchar_t kMarkdownProgId[] = L"MDGEStudio.Markdown";
 constexpr wchar_t kProjectTypeName[] = L"MDGE Studio 项目";
 constexpr wchar_t kMarkdownTypeName[] = L"Markdown 文档";
 
-bool RegistryReadString(HKEY root, const std::wstring& subkey,
-                        const wchar_t* valueName, std::wstring& value) {
-    DWORD type = 0;
-    DWORD bytes = 0;
-    LSTATUS status = RegGetValueW(root, subkey.c_str(), valueName, RRF_RT_REG_SZ,
-                                  &type, nullptr, &bytes);
-    if (status != ERROR_SUCCESS || bytes < sizeof(wchar_t)) {
-        return false;
-    }
-    std::wstring buffer(bytes / sizeof(wchar_t), L'\0');
-    status = RegGetValueW(root, subkey.c_str(), valueName, RRF_RT_REG_SZ, &type,
-                          buffer.data(), &bytes);
-    if (status != ERROR_SUCCESS) {
-        return false;
-    }
-    while (!buffer.empty() && buffer.back() == L'\0') {
-        buffer.pop_back();
-    }
-    value = std::move(buffer);
-    return true;
-}
-
 bool SetRegistryString(HKEY root, const std::wstring& subkey,
                        const wchar_t* valueName, const std::wstring& value,
                        std::wstring& error) {
@@ -73,7 +32,8 @@ bool SetRegistryString(HKEY root, const std::wstring& subkey,
     LSTATUS status = RegCreateKeyExW(root, subkey.c_str(), 0, nullptr, 0,
                                      KEY_WRITE, nullptr, &key, nullptr);
     if (status != ERROR_SUCCESS) {
-        error = L"无法创建注册表项：" + subkey;
+        error = L"无法创建注册表项：" + subkey + L"（错误码 " +
+                std::to_wstring(status) + L"）";
         return false;
     }
     status = RegSetValueExW(
@@ -82,7 +42,8 @@ bool SetRegistryString(HKEY root, const std::wstring& subkey,
         static_cast<DWORD>((value.size() + 1) * sizeof(wchar_t)));
     RegCloseKey(key);
     if (status != ERROR_SUCCESS) {
-        error = L"无法写入注册表值：" + subkey;
+        error = L"无法写入注册表值：" + subkey + L"（错误码 " +
+                std::to_wstring(status) + L"）";
         return false;
     }
     return true;
@@ -129,8 +90,42 @@ bool SamePath(const std::wstring& left, const std::wstring& right) {
     return _wcsicmp(left.c_str(), right.c_str()) == 0;
 }
 
+bool HasRegisteredAssociation(const std::wstring& executable) {
+    if (executable.empty()) {
+        return false;
+    }
+    // Windows returns OpenWith.exe for an extension that has no default
+    // association but merely has "Open with" candidates. That is not an
+    // association we should preserve or treat as already configured.
+    const wchar_t* fileName = PathFindFileNameW(executable.c_str());
+    if (_wcsicmp(fileName, L"OpenWith.exe") == 0 ||
+        _wcsicmp(fileName, L"OpenWithHost.exe") == 0) {
+        return false;
+    }
+    return true;
+}
+
 std::wstring QuotedExecutable(const std::wstring& executablePath) {
     return L"\"" + executablePath + L"\"";
+}
+
+bool RemoveUserChoice(const wchar_t* extension, std::wstring& error) {
+    error.clear();
+    std::wstring path =
+        L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\";
+    path += extension;
+    path += L"\\UserChoice";
+    const LSTATUS status = RegDeleteTreeW(HKEY_CURRENT_USER, path.c_str());
+    if (status == ERROR_SUCCESS || status == ERROR_FILE_NOT_FOUND ||
+        status == ERROR_PATH_NOT_FOUND) {
+        if (status == ERROR_SUCCESS) {
+            SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
+        }
+        return true;
+    }
+    error = L"无法清除旧的默认应用选择（错误码 " +
+            std::to_wstring(status) + L"）。";
+    return false;
 }
 
 bool RegisterAssociation(const wchar_t* extension, const wchar_t* progId,
@@ -182,7 +177,7 @@ void InitializeFileAssociations(HWND owner, const std::wstring& executablePath) 
 
     const std::wstring projectAssociation =
         QueryAssociationExecutable(kProjectExtension);
-    bool projectAssociated = !projectAssociation.empty();
+    bool projectAssociated = HasRegisteredAssociation(projectAssociation);
     std::wstring projectError;
     bool projectRegistered = false;
 
@@ -206,7 +201,7 @@ void InitializeFileAssociations(HWND owner, const std::wstring& executablePath) 
             message += projectError;
             message += L"\n\n";
         }
-        if (!markdownAssociation.empty()) {
+        if (HasRegisteredAssociation(markdownAssociation)) {
             message += L"当前 .md 文件由其他程序打开。\n\n";
         }
         message +=
@@ -223,6 +218,18 @@ void InitializeFileAssociations(HWND owner, const std::wstring& executablePath) 
                 MessageBoxW(owner,
                             (L"无法写入 .md 文件关联：\n\n" + markdownError).c_str(),
                             L"文件关联", MB_OK | MB_ICONWARNING);
+            } else {
+                std::wstring userChoiceError;
+                if (!RemoveUserChoice(kMarkdownExtension, userChoiceError)) {
+                    MessageBoxW(
+                        owner,
+                        (L"已写入 .md 关联，但无法清除旧的默认应用选择：\n\n" +
+                         userChoiceError +
+                         L"\n\n如果双击 .md 仍打开其他程序，请在 Windows 设置中"
+                         L"重新选择默认应用。")
+                            .c_str(),
+                        L"文件关联", MB_OK | MB_ICONWARNING);
+                }
             }
         }
     } else if (!projectAssociated && !projectError.empty()) {

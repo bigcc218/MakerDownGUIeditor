@@ -404,7 +404,13 @@ void App::DrawSidebar() {
                 UiTextAlign::Left, UiTextVAlign::Top, true);
     std::wstring meta = document_.author.empty() ? L"未设置作者" : document_.author;
     meta += L"  /  ";
-    meta += dirty_ ? L"编辑中" : L"已保存";
+    if (!projectPath_.empty()) {
+        meta += dirty_ ? L"编辑中" : L"已保存";
+    } else if (!markdownPath_.empty()) {
+        meta += dirty_ ? L"编辑中" : L"已导入";
+    } else {
+        meta += dirty_ ? L"编辑中" : L"未保存";
+    }
     DrawUiLabel(meta, uiTiny_.Get(), ui_.docMetaRect, palette::kSidebarMuted,
                 UiTextAlign::Left, UiTextVAlign::Middle);
     DrawUiLabel(L"编辑文档资料", uiSmall_.Get(),
@@ -1332,7 +1338,14 @@ void App::DrawStatusBar() {
                          ui_.status.bottom),
                 palette::kTextMuted, UiTextAlign::Left, UiTextVAlign::Middle);
 
-    std::wstring right = dirty_ ? L"未保存" : L"已保存";
+    std::wstring right;
+    if (!projectPath_.empty()) {
+        right = dirty_ ? L"未保存" : L"已保存";
+    } else if (!markdownPath_.empty()) {
+        right = dirty_ ? L"未保存" : L"已导入";
+    } else {
+        right = L"未保存";
+    }
     right += L"  /  MDGE 1.0  /  左至右 8 ms";
     DrawUiLabel(right, uiTiny_.Get(),
                 MakeRect(clientWidth_ * 0.55f, ui_.status.top, clientWidth_ - 22.0f,
