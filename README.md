@@ -198,7 +198,7 @@ src/core/       文档模型、UTF-8、路径、.mdge 读写、Markdown 导出�
 resources/      窗口图标、应用清单、原生对话框模板
 samples/        示例项目、导出结果与示例图标
 tests/          核心逻辑测试
-tools/          图标生成与示例生成脚本
+tools/          图标生成、示例生成与项目导出脚本
 docs/           格式规范和界面截图
 build.bat       Windows 构建脚本
 ```

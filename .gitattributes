@@ -1,0 +1,10 @@
+# 源码统一按 LF 存储、按 LF 检出，避免跨平台协作时混入 CRLF。
+* text=auto eol=lf
+
+# Windows 批处理必须使用 CRLF，否则 cmd 的 goto/标签解析会出错。
+*.bat   text eol=crlf
+
+# 图标、截图等二进制资源不做换行转换。
+*.ico   binary
+*.png   binary
+*.mdge  binary
