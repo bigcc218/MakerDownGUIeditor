@@ -1,6 +1,6 @@
 # MDGE Studio
 
-[![build](https://github.com/bigcc218/MakerDownGUIeditor/actions/workflows/build.yml/badge.svg)](https://github.com/OWNER/MakerDownGUIeditor/actions/workflows/build.yml)
+[![build](https://github.com/bigcc218/MakerDownGUIeditor/actions/workflows/build.yml/badge.svg)](https://github.com/bigcc218/MakerDownGUIeditor/actions/workflows/build.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 MDGE Studio 是一个面向 Windows 的可视化 Markdown 文档编辑器，使用 C++ 和原生 Win32、Direct2D、DirectWrite 实现。它把 Markdown 的结构隐藏到可拖动的画布后面：写作者只需要输入、拖动和点击样式，不需要手写 Markdown 标记。
