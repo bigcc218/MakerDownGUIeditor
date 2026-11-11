@@ -8,11 +8,22 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# 最小权限：构建作业只需要读取仓库；发布作业单独在作业级申请 contents: write。
+permissions:
+  contents: read
+
+# 同一 ref 连续推送时取消旧运行，避免重复构建与重复发版。
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  # 编译与测试：直接调用仓库自带的 build.bat --ci，保证 CI 与本机构建参数完全一致。
+  # 编译与测试：直接调用仓库自带的 build.bat --ci，保证 CI 与本机构建命令行完全一致；
+  # 工具链版本以 MSYS2 UCRT64 最新包为准，本机版本可能与其不同。
   build:
     name: Windows / MinGW-w64
     runs-on: windows-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -34,7 +45,7 @@ jobs:
           g++ --version
           windres --version
 
-      - name: Build and run core tests
+      - name: Build and run tests
         shell: cmd
         run: build.bat --ci
 
@@ -45,6 +56,7 @@ jobs:
           path: |
             build/MDGEStudio.exe
             build/core_tests.exe
+            build/association_tests.exe
           if-no-files-found: error
 
   # 只有主仓库的 tag 推送才创建 Release，PR 与 fork 不会触发。

@@ -14,8 +14,8 @@
 ## 提交代码
 
 1. Fork 本仓库并从 `main` 创建分支，分支名建议使用 `feat/…`、`fix/…` 或 `docs/…`。
-2. 在仓库根目录运行 `build.bat`，确认程序与 `core_tests` 都能编译通过且测试全绿。
-3. 行为变更请同时补充 `tests/core_tests.cpp` 中的测试；核心逻辑（模型、`.mdge` 读写、Markdown 解析与导出、路径解析）应当保持可测试且不依赖窗口。
+2. 在仓库根目录运行 `build.bat`，确认程序、`core_tests` 与 `association_tests` 都能编译通过且测试全绿。
+3. 行为变更请同时补充相应测试：核心逻辑（模型、`.mdge` 读写、Markdown 解析与导出、路径解析）写入 `tests/core_tests.cpp`；文件关联状态机、注册值和恢复策略写入 `tests/association_tests.cpp`。核心逻辑应当保持可测试且不依赖窗口。
 4. 如果改动了 `.mdge` 文件格式，必须同步更新 [docs/MDGE_FORMAT.md](docs/MDGE_FORMAT.md)，并且遵守其中的兼容性规则：不改变已有 tag 的含义、读取端跳过未知 tag、`END` 保持为最后一条记录。
 5. 提交 PR 前请先 `git rebase` 或合并最新的 `main`，并在 PR 描述中说明动机与验证方式。
 

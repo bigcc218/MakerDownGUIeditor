@@ -174,6 +174,7 @@ void App::UpdateHover(float x, float y) {
     const int oldPalette = hoveredPalette_;
     const int oldOutline = hoveredOutline_;
     const bool oldDocCard = hoveredDocCard_;
+    const bool oldRepair = hoveredRepairAssociation_;
     const int oldCursor = cursorKind_;
 
     hoveredButton_ = ActionId::None;
@@ -182,6 +183,7 @@ void App::UpdateHover(float x, float y) {
     hoveredPalette_ = -1;
     hoveredOutline_ = -1;
     hoveredDocCard_ = false;
+    hoveredRepairAssociation_ = false;
     cursorKind_ = 0;
 
     if (!mouseInside_) {
@@ -189,6 +191,7 @@ void App::UpdateHover(float x, float y) {
         if (oldButton != hoveredButton_ || oldBlock != hoveredBlock_ ||
             oldGrip != hoveredGrip_ || oldPalette != hoveredPalette_ ||
             oldOutline != hoveredOutline_ || oldDocCard != hoveredDocCard_ ||
+            oldRepair != hoveredRepairAssociation_ ||
             oldCursor != cursorKind_) {
             InvalidateRect(window_, nullptr, FALSE);
         }
@@ -200,6 +203,9 @@ void App::UpdateHover(float x, float y) {
         cursorKind_ = ActionEnabled(button->action) ? 2 : 0;
     } else if (ui_.docCard.Contains(x, y)) {
         hoveredDocCard_ = true;
+        cursorKind_ = 2;
+    } else if (ui_.repairAssociationRect.Contains(x, y)) {
+        hoveredRepairAssociation_ = true;
         cursorKind_ = 2;
     } else {
         const int palette = HitPalette(x, y);
@@ -243,6 +249,7 @@ void App::UpdateHover(float x, float y) {
     if (oldButton != hoveredButton_ || oldBlock != hoveredBlock_ ||
         oldGrip != hoveredGrip_ || oldPalette != hoveredPalette_ ||
         oldOutline != hoveredOutline_ || oldDocCard != hoveredDocCard_ ||
+        oldRepair != hoveredRepairAssociation_ ||
         oldCursor != cursorKind_) {
         InvalidateRect(window_, nullptr, FALSE);
     }
@@ -475,6 +482,10 @@ void App::OnLeftButtonDown(float x, float y, WPARAM keys) {
     }
     if (ui_.docCard.Contains(x, y)) {
         ShowDocumentSettings();
+        return;
+    }
+    if (ui_.repairAssociationRect.Contains(x, y)) {
+        RepairFileAssociationsFromUi();
         return;
     }
     if (const int palette = HitPalette(x, y); palette >= 0) {
@@ -715,6 +726,7 @@ void App::OnMouseLeave() {
         hoveredPalette_ = -1;
         hoveredOutline_ = -1;
         hoveredDocCard_ = false;
+        hoveredRepairAssociation_ = false;
         cursorKind_ = 0;
         InvalidateRect(window_, nullptr, FALSE);
     }

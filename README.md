@@ -26,7 +26,8 @@ MDGE Studio 是一个面向 Windows 的可视化 Markdown 文档编辑器，使�
 - 实时 Markdown 源码面板与文档大纲面板。
 - Markdown 源码可以直接点击编辑：源码改动实时解析为可视化内容，画布与源码双向同步。
 - 自有的二进制项目格式 `.mdge`，带版本、CRC32 校验、原子保存。
-- 首次启动自动关联未关联的 `.mdge`，随后询问是否关联 `.md`；两种文件图标独立，且都与应用图标不同。
+- 首次启动自动关联未关联的 `.mdge`，随后询问是否关联 `.md`；火绒等安全软件拦截时提供信任/打开方式恢复路径和诊断日志；两种文件图标独立，且都与应用图标不同。
+- 单实例运行：再次双击 `.md` / `.mdge` 时通过窗口消息把文件转给已运行窗口，不创建第二个编辑器。
 - 标准 Markdown 导出，图片路径保持原样并转为 `/` 分隔符。
 - 项目图标支持绝对路径与相对路径；加载结果会同时用于侧栏、标题栏和任务栏图标。
 - 文档文字以左到右的裁剪动画出现，总时长 **8 ms**，小于 10 ms；不会影响输入响应。
@@ -38,7 +39,7 @@ MDGE Studio 是一个面向 Windows 的可视化 Markdown 文档编辑器，使�
 
 到 [Releases](../../releases) 下载最新的 `MDGEStudio.exe`（单个文件、静态链接，无需安装运行时）；或者克隆仓库后运行 `build.bat` 自行编译。
 
-当前版本 **v1.1.2**，版本号同时写入可执行文件的版本资源，可在文件属性 → 详细信息中查看。
+当前版本 **v1.1.3**，版本号同时写入可执行文件的版本资源，可在文件属性 → 详细信息中查看。
 
 ## 运行
 
@@ -65,12 +66,23 @@ build\MDGEStudio.exe samples\Welcome.md
 build.bat
 ```
 
-脚本会依次编译资源、程序和核心测试，然后运行测试。最终产物：
+脚本会依次编译资源、程序和测试，然后运行核心测试与文件关联测试。最终产物：
 
 - `build\MDGEStudio.exe`：应用本体，已静态链接 C++ 运行库。
 - `build\core_tests.exe`：模型、文件格式、Markdown 导出与路径解析测试。
+- `build\association_tests.exe`：关联状态机、注册值、图标资源 ID、SID/重试参数与恢复节流测试。
 
 应用本体只依赖系统 DLL：Direct2D、DirectWrite、Windows Imaging Component、User32、GDI32、Shell32、Shlwapi、Advapi32（当前用户文件关联）等。
+
+## 开发辅助脚本（可选）
+
+`tools\` 下的 Python 脚本用于重新生成图标与示例资源，需要 Python 3 与 Pillow：
+
+```bat
+py -m pip install -r tools\requirements.txt
+```
+
+`tools\project_dump.cpp`、`tools\sample_builder.cpp` 是生成本地示例、导出项目内容的小工具，不参与 `build.bat` 与 GitHub Actions。
 
 ## 基本操作
 
@@ -126,16 +138,38 @@ build.bat
 
 应用第一次启动时会检查当前用户对 `.mdge` 的关联状态：
 
-1. 如果 `.mdge` 尚未关联，程序通过当前用户注册表自动将它关联到 MDGE Studio，不需要管理员权限。
-2. 完成 `.mdge` 处理后，程序会询问是否也为 `.md` 文件添加关联。选择“是”会写入 `.md` 关联；选择“否”不会再次询问。
-3. 如果 `.mdge` 或 `.md` 已由其他程序关联，程序不会静默覆盖 `.mdge` 的现有设置；`.md` 会在获得用户确认后才尝试切换默认打开方式。
-4. 关联设置只在首次启动时执行一次，并记录在当前用户配置中。
+1. `.mdge` 尚未关联时自动关联到 MDGE Studio，并写入应用 Capabilities / `RegisteredApplications`，使其出现在 Windows“默认应用”中。
+2. `.mdge` 就绪后询问是否关联 `.md`。选择“是”后先备份旧的 `UserChoice`，写入 `.md` 关联，再清除 `UserChoice`，最后用 `AssocQueryString` 和实际打开命令验证；验证失败会尝试恢复原设置。选择“否”不会再次询问。
+3. `.mdge` 已被其他程序关联时不会覆盖其默认值，但仍会注册“打开方式”和 Capabilities。
+4. 正常桌面首次启动不需要管理员权限，也不会弹 UAC。若当前进程被安全软件限制写 HKCU（例如火绒的文件关联/行为保护），程序会检测火绒并显示专用恢复对话框，不再进行无意义的 UAC 提权：
+   - **打开火绒信任设置**：将 `MDGEStudio.exe` 加入火绒信任区后，点击侧栏“修复关联”重试。
+   - **使用 Windows 打开方式**：由 Windows 资源管理器处理关联；若仍然被拦截，可在资源管理器中右键文件手动选择。
+5. 非火绒权限受限环境仍保留隐藏提权模式：启动同一 exe，核对提权进程与当前用户的 TokenUser SID；账户不同则不当作成功。
+6. 失败的状态不会写成“已就绪”。`ProjectAssociationReady` 仅在 `.mdge` 实际指向本程序或明确由其他程序关联时写入；`.md` 同意但暂时失败时保留 `MarkdownAssociationRequested`，后续启动静默重试，不重复弹询问。
+7. 旧版 `FileAssociationSetupDone` 标记会保守迁移：视为旧用户已被询问过 `.md`，不会自动再次弹出询问；仍有 `ProjectAssociationReady` 重试和“修复关联”手动入口。
+8. 侧栏底部提供“修复关联”入口；手动修复不受自动提示节流限制。
+9. 状态同时写入注册表和 `%LOCALAPPDATA%\MDGE Studio\association-state.ini`；安全软件拦截注册表时，已询问/待重试状态仍然保留。诊断日志位于 `%LOCALAPPDATA%\MDGE Studio\association.log`。
+10. `.md` 的 `UserChoice` 会先备份到 `AssociationBackup` 或 `association-userchoice.ini`，再尝试切换；恢复失败会明确提示。
 
-`.md` 和 `.mdge` 使用两个不同的文件图标，且都不使用应用本身的图标：
+`.md` 和 `.mdge` 使用两个不同的文件图标（资源 102/103），应用图标为 101，三者互不相同：
 
 ![应用图标、.mdge 文件图标与 .md 文件图标](docs/file-association-icons.png)
 
-关联图标直接嵌入程序资源中，因此只需要分发单个 `MDGEStudio.exe`，不需要额外的 `.ico` 文件。
+关联图标直接嵌入程序资源中，因此只需要分发单个 `MDGEStudio.exe`，不需要额外的 `.ico` 文件。`DefaultIcon` 使用 `"<exe>",-102` 和 `"<exe>",-103`。
+
+### Windows 10 与火绒安全软件
+
+已经在 Windows 10 22H2 + 火绒 6.0 环境验证到：未签名程序直接写 HKCU 文件关联会被火绒静默拦截（错误码 5），调用 Windows `reg.exe` 也会被拦截；这是安全软件的策略，不是 Win10 文件关联 API 的问题。
+
+推荐处理方式：
+
+1. 打开火绒主界面，进入“安全设置 → 信任区/系统加固”，把 `MDGEStudio.exe` 加入信任区。
+2. 回到 MDGE Studio，点击侧栏底部“修复关联”；或者重启应用触发首次关联。
+3. 如果不想修改安全软件，使用资源管理器右键任意 `.mdge` 文件 →“打开方式”→“选择其他应用”→浏览到 `MDGEStudio.exe`，勾选“始终使用此应用”。`.md` 同理。
+4. 应用内“使用 Windows 打开方式”也可能被火绒拦截；如果它无法完成，请在资源管理器中手动右键操作，或直接使用火绒信任区。
+5. 应用会自动记录诊断日志和本地状态；如仍失败，请查看 `%LOCALAPPDATA%\MDGE Studio\association.log`，里面包含错误码、火绒检测结果和回退结果。
+
+正常桌面（未受安全软件拦截）首次启动仍直接使用 HKCU 关联，不需要管理员权限，也不会出现 UAC。
 
 ## 图标加载：绝对路径与相对路径
 
@@ -215,7 +249,7 @@ src/app/        Win32 窗口、Direct2D 绘制、编辑交互、对话框
 src/core/       文档模型、UTF-8、路径、.mdge 读写、Markdown 导出与解析
 resources/      应用与关联文件图标、应用清单、原生对话框模板
 samples/        示例项目、导出结果与示例图标
-tests/          核心逻辑测试
+tests/          核心逻辑与文件关联测试
 tools/          图标生成、示例生成与项目导出脚本
 docs/           格式规范和界面截图
 build.bat       Windows 构建脚本
@@ -223,22 +257,24 @@ build.bat       Windows 构建脚本
 
 ## 验证
 
-本项目自带测试覆盖 UTF-8 转换、CRC32 标准向量、内联样式与链接编辑、块拆分/合并、Markdown 导出与解析、GitHub 任务清单解析与状态块往返、`.mdge` 保存/加载往返、损坏校验、绝对/相对资源路径解析等。
+本项目自带测试覆盖 UTF-8 转换、CRC32 标准向量、内联样式与链接编辑、块拆分/合并、Markdown 导出与解析、GitHub 任务清单解析与状态块往返、`.mdge` 保存/加载往返、损坏校验、绝对/相对资源路径解析，以及文件关联状态机、旧标记迁移、OpenWith 判定、Capabilities/DefaultIcon 注册值、SID 参数、恢复提示节流和 `.md` 询问重试等。
 
 ```bat
 build.bat
 ```
 
-或只运行已构建的测试：
+只运行已构建的测试：
 
 ```bat
 build\core_tests.exe
+build\association_tests.exe
 ```
 
 ## 当前范围
 
 - 仅面向 Windows 桌面。
 - 可以直接打开 `.mdge` 项目和拖入图片；通过文件关联双击 `.md` 会作为 Markdown 导入，打开按钮目前仍以 `.mdge` 项目为主。
+- Windows 10 上若火绒的文件关联保护拦截未签名程序，首次关联需要先将 `MDGEStudio.exe` 加入火绒信任区，或在资源管理器中手动选择“打开方式”；程序本身不会静默绕过安全软件。
 - 表格、嵌套列表、Setext 标题和 HTML 块暂不转换为对应可视化块。
 - 跨块文本选择不在当前版本范围内。
 - 行内样式在当前内容块内应用，文件格式本身可以保存任意数量的样式 span。
@@ -247,7 +283,7 @@ build\core_tests.exe
 
 ## 参与贡献
 
-欢迎提交 Issue 与 Pull Request，流程见 [CONTRIBUTING.md](CONTRIBUTING.md)。每次推送和 PR 都会在 GitHub Actions 的 Windows + MinGW-w64 环境中编译并运行 `core_tests`。
+欢迎提交 Issue 与 Pull Request，流程见 [CONTRIBUTING.md](CONTRIBUTING.md)。每次推送和 PR 都会在 GitHub Actions 的 Windows + MinGW-w64 环境中编译并运行 `core_tests` 和 `association_tests`。
 
 ## 许可证
 

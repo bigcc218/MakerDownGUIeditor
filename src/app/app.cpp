@@ -1,5 +1,7 @@
 #include "app.h"
 
+#include "file_associations.h"
+
 #include "core/markdown.h"
 #include "core/path_utils.h"
 #include "core/project_io.h"
@@ -22,7 +24,6 @@
 namespace mdgeui {
 namespace {
 
-constexpr wchar_t kWindowClassName[] = L"MDGEStudioMainWindow";
 constexpr wchar_t kWindowTitleBase[] = L"MDGE Studio";
 constexpr float kHeaderHeight = 72.0f;
 constexpr float kSidebarWidth = 252.0f;
@@ -214,7 +215,7 @@ App::~App() {
     writeFactory_.Reset();
     d2dFactory_.Reset();
     if (instance_) {
-        UnregisterClassW(kWindowClassName, instance_);
+        UnregisterClassW(kMainWindowClassName, instance_);
     }
 }
 
@@ -359,7 +360,7 @@ bool App::Create(HINSTANCE instance, const std::wstring& initialProjectPath) {
     windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     windowClass.hbrBackground = nullptr;
     windowClass.lpszMenuName = nullptr;
-    windowClass.lpszClassName = kWindowClassName;
+    windowClass.lpszClassName = kMainWindowClassName;
     RegisterClassExW(&windowClass);
 
     UINT systemDpi = GetDpiForSystem();
@@ -386,7 +387,7 @@ bool App::Create(HINSTANCE instance, const std::wstring& initialProjectPath) {
     const int y = monitorInfo.rcWork.top +
                   std::max(0, (monitorHeight - windowHeight) / 2);
 
-    window_ = CreateWindowExW(0, kWindowClassName, kWindowTitleBase,
+    window_ = CreateWindowExW(0, kMainWindowClassName, kWindowTitleBase,
                               WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN, x, y, windowWidth,
                               windowHeight, nullptr, nullptr, instance_, this);
     if (!window_) {
@@ -649,6 +650,41 @@ LRESULT App::HandleMessage(UINT message, WPARAM wparam, LPARAM lparam) {
                 PasteFromClipboard();
             }
             return 0;
+        case WM_COPYDATA: {
+            auto* data = reinterpret_cast<const COPYDATASTRUCT*>(lparam);
+            if (data && data->lpData &&
+                data->cbData >= sizeof(DWORD) + sizeof(wchar_t)) {
+                DWORD magic = 0;
+                std::memcpy(&magic, data->lpData, sizeof(magic));
+                if (magic == kOpenFileCopyDataMagic) {
+                    const auto* text = reinterpret_cast<const wchar_t*>(
+                        static_cast<const unsigned char*>(data->lpData) +
+                        sizeof(DWORD));
+                    const std::size_t chars =
+                        (data->cbData - sizeof(DWORD)) / sizeof(wchar_t);
+                    std::wstring path(text, chars);
+                    while (!path.empty() && path.back() == L'\0') {
+                        path.pop_back();
+                    }
+                    if (!path.empty()) {
+                        pendingExternalPath_ = std::move(path);
+                        PostMessageW(window_, WM_APP + 1, 0, 0);
+                    }
+                }
+            }
+            return TRUE;
+        }
+        case WM_APP + 1: {
+            std::wstring path = std::move(pendingExternalPath_);
+            pendingExternalPath_.clear();
+            if (!path.empty()) {
+                OpenExternalPath(path);
+            }
+            ShowWindow(window_, SW_RESTORE);
+            SetForegroundWindow(window_);
+            SetFocus(window_);
+            return 0;
+        }
         case WM_CLOSE:
             if (MaybeSaveBeforeDestructiveAction()) {
                 DestroyWindow(window_);
@@ -662,6 +698,46 @@ LRESULT App::HandleMessage(UINT message, WPARAM wparam, LPARAM lparam) {
             return DefWindowProcW(window_, message, wparam, lparam);
     }
     return DefWindowProcW(window_, message, wparam, lparam);
+}
+
+void App::OpenExternalPath(const std::wstring& path) {
+    if (path.empty()) {
+        return;
+    }
+    if (!MaybeSaveBeforeDestructiveAction()) {
+        return;
+    }
+    const std::wstring extension = mdge::FileExtensionLower(path);
+    bool opened = false;
+    if (extension == L".mdge") {
+        opened = OpenProjectFile(path, true, true);
+        if (opened) {
+            ShowToast(L"项目已打开。");
+        }
+    } else if (extension == L".md") {
+        opened = OpenMarkdownFile(path, true, true);
+    } else {
+        MessageBoxW(window_, L"只能打开 .mdge 项目或 .md 文档。", L"MDGE Studio",
+                    MB_OK | MB_ICONWARNING);
+        return;
+    }
+    if (opened) {
+        ShowWindow(window_, SW_RESTORE);
+        SetForegroundWindow(window_);
+        SetFocus(window_);
+    }
+}
+
+void App::RepairFileAssociationsFromUi() {
+    std::vector<wchar_t> path(32768, L'\0');
+    const DWORD length =
+        GetModuleFileNameW(nullptr, path.data(), static_cast<DWORD>(path.size()));
+    if (length == 0 || length >= path.size()) {
+        return;
+    }
+    LeaveSourceEditing();
+    mdgeui::RepairFileAssociations(window_, std::wstring(path.data(), length));
+    InvalidateRect(window_, nullptr, FALSE);
 }
 
 bool App::EnsureRenderTarget() {
@@ -865,6 +941,9 @@ void App::RecalculateUi() {
     const float footerY = sidebarBottom - 26.0f;
     ui_.sidebarFooterRect =
         MakeRect(16.0f, footerY, kSidebarWidth - 16.0f, footerY + 16.0f);
+    ui_.repairAssociationRect =
+        MakeRect(kSidebarWidth - 84.0f, footerY, kSidebarWidth - 16.0f,
+                 footerY + 16.0f);
     const bool showTip = (sidebarBottom - paletteY) > 118.0f;
     if (showTip) {
         ui_.sidebarTipRect = MakeRect(16.0f, paletteY + 14.0f, kSidebarWidth - 16.0f,

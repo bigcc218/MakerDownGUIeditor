@@ -523,9 +523,10 @@ void App::DrawSidebar() {
         DrawUiLabel(L"MDGE 1.0", uiTiny_.Get(), ui_.sidebarFooterRect,
                     palette::kSidebarMuted, UiTextAlign::Left,
                     UiTextVAlign::Middle);
-        DrawUiLabel(L"TEXT 8 MS / MDGE V1", uiTiny_.Get(), ui_.sidebarFooterRect,
-                    palette::kSidebarMuted, UiTextAlign::Right,
-                    UiTextVAlign::Middle);
+        DrawUiLabel(L"修复关联", uiTiny_.Get(), ui_.repairAssociationRect,
+                    hoveredRepairAssociation_ ? palette::kAccent
+                                              : palette::kSidebarMuted,
+                    UiTextAlign::Right, UiTextVAlign::Middle);
     }
 }
 

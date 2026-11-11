@@ -113,6 +113,7 @@ struct UiGeometry {
     RectF paletteHintRect;
     RectF sidebarTipRect;
     RectF sidebarFooterRect;
+    RectF repairAssociationRect;
     RectF previewHeader;
     RectF previewBody;
     RectF previewScrollTrack;
@@ -175,6 +176,9 @@ struct DragState {
     float grabOffsetY = 0.0f;
 };
 
+inline constexpr wchar_t kMainWindowClassName[] = L"MDGEStudioMainWindow";
+inline constexpr DWORD kOpenFileCopyDataMagic = 0x4D444745;  // "MDGE"
+
 class App {
   public:
     App();
@@ -229,6 +233,8 @@ class App {
     void ToggleTaskBlock(int blockIndex);
     void DrawSourceView();
     void DrawOutlineView();
+    void OpenExternalPath(const std::wstring& path);
+    void RepairFileAssociationsFromUi();
     void DrawSidebarIcon(const RectF& bounds);
     void DrawEmptyState();
 
@@ -488,6 +494,8 @@ class App {
     std::size_t sourceCaret_ = 0;
     std::size_t sourceAnchor_ = 0;
     float preferredSourceX_ = -1.0f;
+    std::wstring pendingExternalPath_;
+    bool hoveredRepairAssociation_ = false;
 
     // Undo.
     std::deque<EditorSnapshot> undoStack_;
